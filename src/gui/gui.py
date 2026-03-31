@@ -3,10 +3,13 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import messagebox, scrolledtext
 import threading
+from tkinter import ttk
+from PIL import Image, ImageTk
 
-from src.analysis.graphs import plot_all_graphs
+from src.analysis.graphs import export_graph_package
 from src.attack.experiment_engine import (
     ExperimentSummary,
+    SECURE_PREVENTION_MODES,
     TestCaseResult,
     run_forgery_suite,
 )
@@ -20,6 +23,7 @@ class PGPAttackGUI:
         self.root.geometry("1120x760")
 
         self.current_mode = "MD5"
+        self.prevention_summaries: dict[str, ExperimentSummary] = {}
         self.public_key = None
         self.private_key = None
         self.last_md5_summary: ExperimentSummary | None = None
@@ -30,7 +34,13 @@ class PGPAttackGUI:
         self.var_hash_legit = tk.StringVar(value="Run tests to view latest digest")
         self.var_hash_malic = tk.StringVar(value="Run tests to view latest digest")
         self.var_mode = tk.StringVar(value="Current Mode: MD5 (Vulnerable)")
+        self.var_prevention_method = tk.StringVar(value="SHA-256")
         self._suite_running = False
+        self.graph_window: tk.Toplevel | None = None
+        self.graph_view_var = tk.StringVar(value="")
+        self.graph_paths: dict[str, str] = {}
+        self.graph_image_label: tk.Label | None = None
+        self.graph_image_ref = None
 
         self._build_ui()
         self.log("System initialized. Click Generate Keys to begin.", "INFO")
@@ -78,6 +88,23 @@ class PGPAttackGUI:
             font=("Arial", 10, "bold"),
         )
         self.btn_graphs.grid(row=0, column=3, padx=10, pady=4)
+
+        tk.Label(
+            top,
+            text="Prevention Method:",
+            bg="#1e2a38",
+            fg="#e5e7eb",
+            font=("Arial", 10, "bold"),
+        ).grid(row=1, column=1, sticky="e", padx=8, pady=(4, 2))
+
+        self.prevention_combo = ttk.Combobox(
+            top,
+            textvariable=self.var_prevention_method,
+            values=list(SECURE_PREVENTION_MODES),
+            state="readonly",
+            width=18,
+        )
+        self.prevention_combo.grid(row=1, column=2, sticky="w", padx=8, pady=(4, 2))
 
         state = tk.Label(self.root, textvariable=self.var_mode, font=("Arial", 11, "bold"), fg="#2c3e50")
         state.pack(fill=tk.X, padx=10, pady=(8, 0))
@@ -140,11 +167,11 @@ class PGPAttackGUI:
         self.log("", "INFO")
         self.log("================== ATTACK EXECUTION ==================", "INFO")
 
-        mode = "MD5" if self.current_mode == "MD5" else "SHA-256"
+        mode = self.current_mode
         if mode == "MD5":
             self.log("[ATTACK] Running 25 automated MD5 collision-forgery test cases...", "HIGHLIGHT")
         else:
-            self.log("[SECURE] Running 25 automated SHA-256 prevention test cases...", "GREEN")
+            self.log(f"[SECURE] Running 25 automated {mode} prevention test cases...", "GREEN")
 
         self._suite_running = True
         self._set_controls_state(False)
@@ -172,7 +199,9 @@ class PGPAttackGUI:
         if summary.mode == "MD5":
             self.last_md5_summary = summary
         else:
-            self.last_sha_summary = summary
+            self.prevention_summaries[summary.mode] = summary
+            if summary.mode == "SHA-256":
+                self.last_sha_summary = summary
 
         self._display_summary(summary)
         self._suite_running = False
@@ -189,6 +218,7 @@ class PGPAttackGUI:
         self.btn_run_attack.config(state=state)
         self.btn_prevention.config(state=state)
         self.btn_graphs.config(state=state)
+        self.prevention_combo.config(state="readonly" if enabled else "disabled")
 
     def _display_summary(self, summary: ExperimentSummary) -> None:
         if summary.results:
@@ -208,10 +238,11 @@ class PGPAttackGUI:
         self.log("======================================================", "INFO")
 
     def apply_prevention(self) -> None:
-        self.current_mode = "SHA-256"
-        self.var_mode.set("Current Mode: SHA-256 (Secure)")
-        self.log("[SECURE] Prevention applied: SHA-256 is now enforced for all signatures.", "GREEN")
-        self.log("[SECURE] Launching SHA-256 validation suite now...", "GREEN")
+        selected_method = self.var_prevention_method.get().strip().upper()
+        self.current_mode = selected_method
+        self.var_mode.set(f"Current Mode: {selected_method} (Secure)")
+        self.log(f"[SECURE] Prevention applied: {selected_method} is now enforced for all signatures.", "GREEN")
+        self.log(f"[SECURE] Launching {selected_method} validation suite now...", "GREEN")
 
         if self.public_key is None:
             self.log("[SYSTEM] Generate keys first, then apply prevention again to run tests.", "HIGHLIGHT")
@@ -223,11 +254,11 @@ class PGPAttackGUI:
 
         self.log("", "INFO")
         self.log("================ PREVENTION VALIDATION ================", "INFO")
-        self.log("[SECURE] Running 25 automated SHA-256 prevention test cases...", "GREEN")
+        self.log(f"[SECURE] Running 25 automated {selected_method} prevention test cases...", "GREEN")
 
         self._suite_running = True
         self._set_controls_state(False)
-        threading.Thread(target=self._run_suite_worker, args=("SHA-256",), daemon=True).start()
+        threading.Thread(target=self._run_suite_worker, args=(selected_method,), daemon=True).start()
 
     def show_graphs(self) -> None:
         if self._suite_running:
@@ -253,8 +284,71 @@ class PGPAttackGUI:
             )
             self.log("[SYSTEM] SHA-256 suite for graph preparation completed.", "INFO")
 
-        graph_path = plot_all_graphs(self.last_md5_summary, self.last_sha_summary)
-        self.log(f"[SYSTEM] Graph generated: {graph_path}", "GREEN")
+        generated = export_graph_package(self.last_md5_summary, self.last_sha_summary)
+
+        self.log("[SYSTEM] Project Required Graphs Generated:", "GREEN")
+        self.log(f"  1) {generated['mandatory_1_success_rate']}", "GREEN")
+        self.log(f"  2) {generated['mandatory_2_time_vs_key_size']}", "GREEN")
+        self.log(f"  3) {generated['mandatory_3_cia_rates']}", "GREEN")
+        self.log(f"  4) {generated['mandatory_4_latency_overhead']}", "GREEN")
+        self.log(f"  Combined Dashboard: {generated['mandatory_dashboard_4in1']}", "GREEN")
+        self._open_graph_viewer(generated)
+
+    def _open_graph_viewer(self, generated: dict[str, str]) -> None:
+        self.graph_paths = dict(generated)
+
+        if self.graph_window is None or not self.graph_window.winfo_exists():
+            self.graph_window = tk.Toplevel(self.root)
+            self.graph_window.title("Generated Graph Viewer")
+            self.graph_window.geometry("1200x820")
+
+            control_frame = tk.Frame(self.graph_window, pady=8)
+            control_frame.pack(fill=tk.X)
+
+            tk.Label(control_frame, text="Select Graph:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=8)
+            graph_selector = ttk.Combobox(
+                control_frame,
+                textvariable=self.graph_view_var,
+                state="readonly",
+                width=55,
+            )
+            graph_selector.pack(side=tk.LEFT, padx=8)
+            graph_selector.bind("<<ComboboxSelected>>", lambda _: self._display_selected_graph())
+            self._graph_selector = graph_selector
+
+            self.graph_image_label = tk.Label(self.graph_window, bg="#111827")
+            self.graph_image_label.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        else:
+            self.graph_window.deiconify()
+            self.graph_window.lift()
+
+        graph_names = list(self.graph_paths.keys())
+        self._graph_selector["values"] = graph_names
+
+        preferred_default = "mandatory_dashboard_4in1"
+        if preferred_default in graph_names:
+            self.graph_view_var.set(preferred_default)
+        elif graph_names:
+            self.graph_view_var.set(graph_names[0])
+
+        self._display_selected_graph()
+
+    def _display_selected_graph(self) -> None:
+        if self.graph_image_label is None:
+            return
+
+        selected = self.graph_view_var.get()
+        image_path = self.graph_paths.get(selected)
+        if not image_path:
+            return
+
+        try:
+            image = Image.open(image_path)
+            image.thumbnail((1150, 760), Image.Resampling.LANCZOS)
+            self.graph_image_ref = ImageTk.PhotoImage(image)
+            self.graph_image_label.config(image=self.graph_image_ref)
+        except Exception as exc:
+            self.log(f"[ERROR] Failed to render graph image: {exc}", "RED")
 
 
 if __name__ == "__main__":

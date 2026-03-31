@@ -14,6 +14,8 @@ from src.core.rsa_core import generate_keypair, rsa_sign, rsa_verify
 
 _KEY_POOL_CACHE: Dict[Tuple[int, ...], Dict[int, Tuple[Tuple[int, int], Tuple[int, int]]]] = {}
 
+SECURE_PREVENTION_MODES = ("SHA-256", "SHA3-256", "SHA-512", "BLAKE2B-256")
+
 
 @dataclass
 class TestCaseResult:
@@ -61,6 +63,36 @@ def _hash_sha256(message: bytes) -> Tuple[str, float]:
     return digest, (perf_counter() - start) * 1000
 
 
+def _hash_sha3_256(message: bytes) -> Tuple[str, float]:
+    start = perf_counter()
+    digest = hashlib.sha3_256(message).hexdigest()
+    return digest, (perf_counter() - start) * 1000
+
+
+def _hash_sha512(message: bytes) -> Tuple[str, float]:
+    start = perf_counter()
+    digest = hashlib.sha512(message).hexdigest()
+    return digest, (perf_counter() - start) * 1000
+
+
+def _hash_blake2b_256(message: bytes) -> Tuple[str, float]:
+    start = perf_counter()
+    digest = hashlib.blake2b(message, digest_size=32).hexdigest()
+    return digest, (perf_counter() - start) * 1000
+
+
+def _hash_with_mode(mode: str, message: bytes) -> Tuple[str, float]:
+    if mode == "SHA-256":
+        return _hash_sha256(message)
+    if mode == "SHA3-256":
+        return _hash_sha3_256(message)
+    if mode == "SHA-512":
+        return _hash_sha512(message)
+    if mode == "BLAKE2B-256":
+        return _hash_blake2b_256(message)
+    raise ValueError(f"Unsupported secure mode: {mode}")
+
+
 def _build_payload_pair(case_id: int) -> Tuple[bytes, bytes]:
     token = _random_token(10)
     legit = f"ALICE_KEY_CERT::{case_id:02d}::{token}::LEGIT".encode()
@@ -90,8 +122,9 @@ def run_forgery_suite(
     case_callback: Callable[[TestCaseResult], None] | None = None,
 ) -> ExperimentSummary:
     mode = mode.upper().strip()
-    if mode not in {"MD5", "SHA-256"}:
-        raise ValueError("mode must be either 'MD5' or 'SHA-256'")
+    if mode not in {"MD5", *SECURE_PREVENTION_MODES}:
+        supported = ", ".join(("MD5",) + SECURE_PREVENTION_MODES)
+        raise ValueError(f"mode must be one of: {supported}")
 
     pool = prepare_key_pool(key_sizes)
     key_cycle = list(key_sizes)
@@ -120,9 +153,9 @@ def run_forgery_suite(
                 malicious_hash = legit_hash
                 note = "Chosen-prefix collision injected (precomputed model)"
         else:
-            legit_hash, hash_time_ms = _hash_sha256(cert_legit)
-            malicious_hash, _ = _hash_sha256(cert_malicious)
-            note = "SHA-256 enforced (collision attempt rejected)"
+            legit_hash, hash_time_ms = _hash_with_mode(mode, cert_legit)
+            malicious_hash, _ = _hash_with_mode(mode, cert_malicious)
+            note = f"{mode} enforced (collision attempt rejected)"
 
         hash_times.append(hash_time_ms)
 
