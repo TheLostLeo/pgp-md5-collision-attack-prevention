@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import scrolledtext
 import threading
-from rsa_core import generate_keypair
+from src.core.rsa_core import generate_keypair
 
 class TestGUI:
     def __init__(self, root):

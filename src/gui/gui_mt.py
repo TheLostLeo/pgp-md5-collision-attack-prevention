@@ -4,9 +4,9 @@ import threading
 import queue
 
 # Import our custom backend modules
-from rsa_core import generate_keypair, rsa_sign, rsa_verify
-from md5_core import custom_md5
-from review1_graphs import plot_attack_success, plot_time_vs_keysize
+from src.core.rsa_core import generate_keypair, rsa_sign, rsa_verify
+from src.core.md5_core import custom_md5
+from src.analysis.review1_graphs import plot_attack_success, plot_time_vs_keysize
 
 # ========== FONT CONFIGURATION - MODIFY THESE TO TEST DIFFERENT FONTS ==========
 # Available fonts on your system: DejaVu Sans, Bitstream Vera Sans, Adwaita Sans, etc.
@@ -242,7 +242,7 @@ class PGPAttackGUI:
         self.log("         -> Creating 4-panel visualization (Please wait)...", "INFO")
         self.root.update_idletasks()
         
-        from review1_graphs import plot_all_graphs
+        from src.analysis.review1_graphs import plot_all_graphs
         plot_all_graphs()
         
         self.log("[SYSTEM] All graphs successfully generated and displayed.", "GREEN")

@@ -4,9 +4,9 @@ import threading
 import queue
 
 # Import our custom backend modules
-from rsa_core import generate_keypair, rsa_sign, rsa_verify
-from md5_core import custom_md5
-from review1_graphs import plot_attack_success, plot_time_vs_keysize
+from src.core.rsa_core import generate_keypair, rsa_sign, rsa_verify
+from src.core.md5_core import custom_md5
+from src.analysis.review1_graphs import plot_attack_success, plot_time_vs_keysize
 
 # ========== FONT CONFIGURATION - MODIFY THESE TO TEST DIFFERENT FONTS ==========
 # Available fonts on your system: DejaVu Sans, Bitstream Vera Sans, Adwaita Sans, etc.
@@ -201,18 +201,14 @@ class PGPAttackGUI:
         self.log("         -> Upgrading to SHA-256 logic (Pending for Review 2).", "INFO")
 
     def show_graphs(self):
-        self.log("\n[SYSTEM] Generating Required Project Graphs...", "INFO")
-        self.log("         -> 1. Before vs After Attack Success Rate (Bar Chart)", "INFO")
-        self.log("         -> 2. Time vs Key/Parameter Size (Line Chart)", "INFO")
-        self.log("         -> 3. Confidentiality/Integrity Rate Comparison (Bar Chart)", "INFO")
-        self.log("         -> 4. Attack vs Prevention Latency Overhead (Bar Chart)", "INFO")
-        self.log("         -> Please wait, measuring performance metrics...", "HIGHLIGHT")
+        self.log("\n[SYSTEM] Generating Comprehensive Analysis Graphs...", "INFO")
+        self.log("         -> Creating 4-panel visualization (Please wait)...", "INFO")
         self.root.update_idletasks()
         
-        from review1_graphs import plot_all_graphs
+        from src.analysis.review1_graphs import plot_all_graphs
         plot_all_graphs()
         
-        self.log("[SYSTEM] All 4 required graphs successfully generated and displayed!", "GREEN")
+        self.log("[SYSTEM] All graphs successfully generated and displayed.", "GREEN")
 
 if __name__ == "__main__":
     root = tk.Tk()

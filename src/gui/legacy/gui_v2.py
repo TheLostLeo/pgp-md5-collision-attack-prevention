@@ -3,8 +3,8 @@ from tkinter import ttk, scrolledtext, messagebox
 import threading
 
 # Import our custom backend modules
-from rsa_core import generate_keypair, rsa_sign, rsa_verify
-from md5_core import custom_md5
+from src.core.rsa_core import generate_keypair, rsa_sign, rsa_verify
+from src.core.md5_core import custom_md5
 
 class PGPAttackGUI:
     def __init__(self, root):
@@ -15,9 +15,9 @@ class PGPAttackGUI:
         # Style configuration for a modern look
         style = ttk.Style()
         style.theme_use('clam')
-        style.configure("TButton", font=("Arial", 13, "bold"), padding=6)
-        style.configure("TLabel", font=("Arial", 12))
-        style.configure("Header.TLabel", font=("Arial", 13, "bold"), foreground="#333333")
+        style.configure("TButton", font=("Arial", 10, "bold"), padding=6)
+        style.configure("TLabel", font=("Arial", 10))
+        style.configure("Header.TLabel", font=("Arial", 12, "bold"), foreground="#333333")
 
         # State variables
         self.public_key = None
@@ -30,16 +30,16 @@ class PGPAttackGUI:
         control_frame = tk.Frame(self.root, bg="#2c3e50", pady=10)
         control_frame.pack(fill=tk.X)
         
-        self.btn_gen_keys = tk.Button(control_frame, text="1. Generate Keys / Parameters", command=self.generate_keys_thread, bg="#ecf0f1", width=25, font=("Arial", 13, "bold"))
+        self.btn_gen_keys = tk.Button(control_frame, text="1. Generate Keys / Parameters", command=self.generate_keys_thread, bg="#ecf0f1", width=25)
         self.btn_gen_keys.grid(row=0, column=0, padx=15, pady=5)
         
-        self.btn_run_attack = tk.Button(control_frame, text="2. Run Attack (Collision)", command=self.run_attack, bg="#ffcccc", width=25, font=("Arial", 13, "bold"))
+        self.btn_run_attack = tk.Button(control_frame, text="2. Run Attack (Collision)", command=self.run_attack, bg="#ffcccc", width=25)
         self.btn_run_attack.grid(row=0, column=1, padx=15, pady=5)
         
-        self.btn_prevention = tk.Button(control_frame, text="3. Apply Prevention (SHA-256)", command=self.apply_prevention, bg="#ccffcc", width=25, font=("Arial", 13, "bold"))
+        self.btn_prevention = tk.Button(control_frame, text="3. Apply Prevention (SHA-256)", command=self.apply_prevention, bg="#ccffcc", width=25)
         self.btn_prevention.grid(row=0, column=2, padx=15, pady=5)
         
-        self.btn_graphs = tk.Button(control_frame, text="4. Show Graphs", command=self.show_graphs, bg="#cce5ff", width=25, font=("Arial", 13, "bold"))
+        self.btn_graphs = tk.Button(control_frame, text="4. Show Graphs", command=self.show_graphs, bg="#cce5ff", width=25)
         self.btn_graphs.grid(row=0, column=3, padx=15, pady=5)
 
         # --- Main Content Area (Split into Data Dashboard and Logs) ---
@@ -77,14 +77,14 @@ class PGPAttackGUI:
         log_frame = ttk.LabelFrame(main_paned, text=" System Execution Log ")
         main_paned.add(log_frame, weight=2)
 
-        self.log_area = scrolledtext.ScrolledText(log_frame, wrap=tk.WORD, font=("Consolas", 11), bg="#1e1e1e", fg="#ffffff")
+        self.log_area = scrolledtext.ScrolledText(log_frame, wrap=tk.WORD, font=("Consolas", 10), bg="#1e1e1e", fg="#ffffff")
         self.log_area.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # Color tags for logs
-        self.log_area.tag_config("RED", foreground="#ff5555", font=("Consolas", 11, "bold"))
-        self.log_area.tag_config("GREEN", foreground="#55ff55", font=("Consolas", 11, "bold"))
+        self.log_area.tag_config("RED", foreground="#ff5555", font=("Consolas", 10, "bold"))
+        self.log_area.tag_config("GREEN", foreground="#55ff55", font=("Consolas", 10, "bold"))
         self.log_area.tag_config("INFO", foreground="#cccccc")
-        self.log_area.tag_config("HIGHLIGHT", foreground="#f1fa8c", font=("Consolas", 11, "bold"))
+        self.log_area.tag_config("HIGHLIGHT", foreground="#f1fa8c", font=("Consolas", 10, "bold"))
         
         self.log("System Initialized. Awaiting key generation...", "INFO")
 
@@ -99,13 +99,7 @@ class PGPAttackGUI:
         threading.Thread(target=self._generate_keys_logic, daemon=True).start()
 
     def _generate_keys_logic(self):
-        pub_key, priv_key = generate_keypair(1024)
-        # Safely pass data back to the main thread to avoid Segmentation Faults
-        self.root.after(0, self._update_gui_after_keygen, pub_key, priv_key)
-
-    def _update_gui_after_keygen(self, pub_key, priv_key):
-        self.public_key = pub_key
-        self.private_key = priv_key
+        self.public_key, self.private_key = generate_keypair(1024)
         
         # Update Dashboard
         self.var_pub_key.set(f"e={self.public_key[0]}, n={self.public_key[1]}")
