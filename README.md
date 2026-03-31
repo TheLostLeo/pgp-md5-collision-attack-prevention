@@ -17,25 +17,6 @@ This project demonstrates how weak hash-based signing (MD5) can enable signature
 3. SHA-512
 4. BLAKE2B-256
 
-## Project structure
-
-- `src/core/`
-  - `rsa_core.py` - RSA key generation, sign, verify
-  - `md5_core.py` - custom MD5 implementation
-- `src/attack/`
-  - `experiment_engine.py` - test engine, metrics, prevention modes
-  - `attack_simulation.py` - CLI summary flow
-- `src/gui/`
-  - `gui.py` - main Tkinter application (production GUI)
-- `src/analysis/`
-  - `graphs.py` - mandatory + additional graph generation
-- `scripts/`
-  - `run_gui.py` - launch GUI
-  - `run_attack.py` - run CLI attack/prevention summary
-  - `run_graphs.py` - generate graph package
-- `outputs/graphs/`
-  - generated PNG files
-
 ## Setup
 
 ### 1) Create and activate virtual environment
@@ -49,16 +30,6 @@ source .venv/bin/activate
 
 ```bash
 pip install -r requirements.txt
-```
-
-### 3) Linux Tkinter note
-
-If GUI does not start with a Tk library error, install Tk runtime.
-
-Arch Linux:
-
-```bash
-sudo pacman -S --needed tk
 ```
 
 ## Run

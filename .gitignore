@@ -34,3 +34,6 @@ htmlcov/
 *.png
 *.pdf
 *.svg
+
+hashclash/
+collisions/

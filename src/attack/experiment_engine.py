@@ -4,8 +4,7 @@ from dataclasses import dataclass
 from statistics import mean
 from time import perf_counter
 import hashlib
-import random
-import string
+import os
 from typing import Callable, Dict, List, Sequence, Tuple
 
 from src.core.md5_core import custom_md5
@@ -47,57 +46,52 @@ class ExperimentSummary:
     results: List[TestCaseResult]
 
 
-def _random_token(length: int = 8) -> str:
-    return "".join(random.choices(string.ascii_uppercase + string.digits, k=length))
-
-
 def _hash_md5(message: bytes) -> Tuple[str, float]:
     start = perf_counter()
     digest = custom_md5(message)
     return digest, (perf_counter() - start) * 1000
 
 
-def _hash_sha256(message: bytes) -> Tuple[str, float]:
-    start = perf_counter()
-    digest = hashlib.sha256(message).hexdigest()
-    return digest, (perf_counter() - start) * 1000
-
-
-def _hash_sha3_256(message: bytes) -> Tuple[str, float]:
-    start = perf_counter()
-    digest = hashlib.sha3_256(message).hexdigest()
-    return digest, (perf_counter() - start) * 1000
-
-
-def _hash_sha512(message: bytes) -> Tuple[str, float]:
-    start = perf_counter()
-    digest = hashlib.sha512(message).hexdigest()
-    return digest, (perf_counter() - start) * 1000
-
-
-def _hash_blake2b_256(message: bytes) -> Tuple[str, float]:
-    start = perf_counter()
-    digest = hashlib.blake2b(message, digest_size=32).hexdigest()
-    return digest, (perf_counter() - start) * 1000
-
-
 def _hash_with_mode(mode: str, message: bytes) -> Tuple[str, float]:
+    start = perf_counter()
+
     if mode == "SHA-256":
-        return _hash_sha256(message)
-    if mode == "SHA3-256":
-        return _hash_sha3_256(message)
-    if mode == "SHA-512":
-        return _hash_sha512(message)
-    if mode == "BLAKE2B-256":
-        return _hash_blake2b_256(message)
-    raise ValueError(f"Unsupported secure mode: {mode}")
+        digest = hashlib.sha256(message).hexdigest()
+    elif mode == "SHA3-256":
+        digest = hashlib.sha3_256(message).hexdigest()
+    elif mode == "SHA-512":
+        digest = hashlib.sha512(message).hexdigest()
+    elif mode == "BLAKE2B-256":
+        digest = hashlib.blake2b(message, digest_size=32).hexdigest()
+    else:
+        raise ValueError("Unsupported mode")
+
+    return digest, (perf_counter() - start) * 1000
 
 
 def _build_payload_pair(case_id: int) -> Tuple[bytes, bytes]:
-    token = _random_token(10)
-    legit = f"ALICE_KEY_CERT::{case_id:02d}::{token}::LEGIT".encode()
-    malic = f"EVE_KEY_CERT::{case_id:02d}::{token}::MALICIOUS".encode()
-    return legit, malic
+    collision_dir = "collisions"
+
+    if case_id <= 23:
+        file1 = os.path.join(collision_dir, f"msg{case_id}_A.bin")
+        file2 = os.path.join(collision_dir, f"msg{case_id}_B.bin")
+
+        if not os.path.exists(file1) or not os.path.exists(file2):
+            legit = f"FALLBACK_{case_id}".encode()
+            malic = f"FALLBACK_DIFF_{case_id}".encode()
+            return legit, malic
+
+        with open(file1, "rb") as f:
+            legit = f.read()
+
+        with open(file2, "rb") as f:
+            malic = f.read()
+
+        return legit, malic
+    else:
+        legit = f"LEGIT_CASE_{case_id}".encode()
+        malic = f"MALICIOUS_CASE_{case_id}".encode()
+        return legit, malic
 
 
 def prepare_key_pool(key_sizes: Sequence[int]) -> Dict[int, Tuple[Tuple[int, int], Tuple[int, int]]]:
@@ -107,8 +101,7 @@ def prepare_key_pool(key_sizes: Sequence[int]) -> Dict[int, Tuple[Tuple[int, int
 
     pool: Dict[int, Tuple[Tuple[int, int], Tuple[int, int]]] = {}
     for size in key_sizes:
-        if size not in pool:
-            pool[size] = generate_keypair(size)
+        pool[size] = generate_keypair(size)
 
     _KEY_POOL_CACHE[key_signature] = pool
     return pool
@@ -118,13 +111,10 @@ def run_forgery_suite(
     mode: str,
     total_tests: int = 25,
     key_sizes: Sequence[int] = (1024, 1536, 2048),
-    md5_target_success_rate: float = 0.92,
     case_callback: Callable[[TestCaseResult], None] | None = None,
 ) -> ExperimentSummary:
+
     mode = mode.upper().strip()
-    if mode not in {"MD5", *SECURE_PREVENTION_MODES}:
-        supported = ", ".join(("MD5",) + SECURE_PREVENTION_MODES)
-        raise ValueError(f"mode must be one of: {supported}")
 
     pool = prepare_key_pool(key_sizes)
     key_cycle = list(key_sizes)
@@ -134,9 +124,6 @@ def run_forgery_suite(
     sign_times: List[float] = []
     verify_times: List[float] = []
 
-    md5_failures = max(0, min(total_tests, int(round(total_tests * (1.0 - md5_target_success_rate)))))
-    forced_failure_cases = set(range(1, md5_failures + 1))
-
     for case_id in range(1, total_tests + 1):
         key_size = key_cycle[(case_id - 1) % len(key_cycle)]
         public_key, private_key = pool[key_size]
@@ -145,80 +132,76 @@ def run_forgery_suite(
 
         if mode == "MD5":
             legit_hash, hash_time_ms = _hash_md5(cert_legit)
+            malicious_hash, _ = _hash_md5(cert_malicious)
 
-            if case_id in forced_failure_cases:
-                malicious_hash, _ = _hash_md5(cert_malicious + b"\x00")
-                note = "Collision generation failed (alignment mismatch)"
+            if legit_hash == malicious_hash:
+                note = "Real MD5 collision"
             else:
-                malicious_hash = legit_hash
-                note = "Chosen-prefix collision injected (precomputed model)"
+                note = "No collision"
         else:
             legit_hash, hash_time_ms = _hash_with_mode(mode, cert_legit)
             malicious_hash, _ = _hash_with_mode(mode, cert_malicious)
-            note = f"{mode} enforced (collision attempt rejected)"
+            note = f"{mode} secure"
 
         hash_times.append(hash_time_ms)
 
         sign_start = perf_counter()
         signature = rsa_sign(int(legit_hash, 16), private_key)
-        sign_elapsed_ms = (perf_counter() - sign_start) * 1000
-        sign_times.append(sign_elapsed_ms)
+        sign_elapsed = (perf_counter() - sign_start) * 1000
+        sign_times.append(sign_elapsed)
 
         verify_start = perf_counter()
         signature_valid = rsa_verify(int(malicious_hash, 16), signature, public_key)
-        verify_elapsed_ms = (perf_counter() - verify_start) * 1000
-        verify_times.append(verify_elapsed_ms)
+        verify_elapsed = (perf_counter() - verify_start) * 1000
+        verify_times.append(verify_elapsed)
 
-        results.append(
-            TestCaseResult(
-                case_id=case_id,
-                mode=mode,
-                key_size=key_size,
-                key_label=f"RSA-{key_size}",
-                legitimate_hash=legit_hash,
-                malicious_hash=malicious_hash,
-                signature_valid=signature_valid,
-                hash_time_ms=hash_time_ms,
-                sign_time_ms=sign_elapsed_ms,
-                verify_time_ms=verify_elapsed_ms,
-                note=note,
-            )
+        result = TestCaseResult(
+            case_id,
+            mode,
+            key_size,
+            f"RSA-{key_size}",
+            legit_hash,
+            malicious_hash,
+            signature_valid,
+            hash_time_ms,
+            sign_elapsed,
+            verify_elapsed,
+            note,
         )
 
-        if case_callback is not None:
-            case_callback(results[-1])
+        results.append(result)
 
-    successful_forgeries = sum(1 for item in results if item.signature_valid)
-    success_rate = (successful_forgeries / total_tests) * 100 if total_tests else 0.0
+        if case_callback:
+            case_callback(result)
 
-    integrity_rate = 100.0 - success_rate
-    authentication_rate = 100.0 - success_rate
-    confidentiality_rate = 100.0
+    successful = sum(1 for r in results if r.signature_valid)
+    success_rate = (successful / total_tests) * 100
 
     return ExperimentSummary(
-        mode=mode,
-        total_tests=total_tests,
-        successful_forgeries=successful_forgeries,
-        success_rate=success_rate,
-        integrity_rate=integrity_rate,
-        authentication_rate=authentication_rate,
-        confidentiality_rate=confidentiality_rate,
-        avg_hash_time_ms=mean(hash_times) if hash_times else 0.0,
-        avg_sign_time_ms=mean(sign_times) if sign_times else 0.0,
-        avg_verify_time_ms=mean(verify_times) if verify_times else 0.0,
-        results=results,
+        mode,
+        total_tests,
+        successful,
+        success_rate,
+        100 - success_rate,
+        100 - success_rate,
+        100,
+        mean(hash_times),
+        mean(sign_times),
+        mean(verify_times),
+        results,
     )
 
 
-def benchmark_key_generation(key_sizes: Sequence[int] = (1024, 1536, 2048)) -> Tuple[List[int], List[float]]:
-    measured_sizes: List[int] = []
-    measured_times: List[float] = []
+def benchmark_key_generation(key_sizes=(1024, 1536, 2048)):
+    sizes = []
+    times = []
 
     for size in key_sizes:
         start = perf_counter()
         generate_keypair(size)
         elapsed = perf_counter() - start
-        measured_sizes.append(size)
-        measured_times.append(elapsed)
 
-    return measured_sizes, measured_times
+        sizes.append(size)
+        times.append(elapsed)
+
+    return sizes, times

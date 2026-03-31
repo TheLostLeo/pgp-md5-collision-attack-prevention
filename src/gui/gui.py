@@ -18,6 +18,7 @@ from src.core.rsa_core import generate_keypair
 
 class PGPAttackGUI:
     def __init__(self, root: tk.Tk):
+        self.total_tests = 25
         self.root = root
         self.root.title("PGP Key Signing: MD5 Collision Forgery vs SHA-256 Prevention")
         self.root.geometry("1120x760")
@@ -106,6 +107,16 @@ class PGPAttackGUI:
         )
         self.prevention_combo.grid(row=1, column=2, sticky="w", padx=8, pady=(4, 2))
 
+        self.btn_switch_md5 = tk.Button(
+            top,
+            text="Switch To MD5 Mode",
+            command=self.switch_to_md5_mode,
+            bg="#ffe6cc",
+            width=20,
+            font=("Arial", 9, "bold"),
+        )
+        self.btn_switch_md5.grid(row=1, column=3, sticky="w", padx=8, pady=(4, 2))
+
         state = tk.Label(self.root, textvariable=self.var_mode, font=("Arial", 11, "bold"), fg="#2c3e50")
         state.pack(fill=tk.X, padx=10, pady=(8, 0))
 
@@ -169,9 +180,9 @@ class PGPAttackGUI:
 
         mode = self.current_mode
         if mode == "MD5":
-            self.log("[ATTACK] Running 25 automated MD5 collision-forgery test cases...", "HIGHLIGHT")
+            self.log(f"[ATTACK] Running {self.total_tests} automated MD5 collision-forgery test cases...", "HIGHLIGHT")
         else:
-            self.log(f"[SECURE] Running 25 automated {mode} prevention test cases...", "GREEN")
+            self.log(f"[SECURE] Running {self.total_tests} automated {mode} prevention test cases...", "GREEN")
 
         self._suite_running = True
         self._set_controls_state(False)
@@ -182,7 +193,7 @@ class PGPAttackGUI:
             def progress(case_result: TestCaseResult) -> None:
                 self.root.after(0, self._log_case_progress, case_result)
 
-            summary = run_forgery_suite(mode=mode, total_tests=25, case_callback=progress)
+            summary = run_forgery_suite(mode=mode, total_tests=self.total_tests, case_callback=progress)
             self.root.after(0, self._on_suite_complete, summary)
         except Exception as exc:
             self.root.after(0, self._on_suite_error, str(exc))
@@ -191,7 +202,7 @@ class PGPAttackGUI:
         color = "RED" if result.signature_valid else "GREEN"
         status = "FORGERY ACCEPTED" if result.signature_valid else "FORGERY BLOCKED"
         self.log(
-            f"Case {result.case_id:02d}/25 | {result.key_label} | {status} | {result.note}",
+            f"Case {result.case_id:02d}/{self.total_tests} | {result.key_label} | {status} | {result.note}",
             color,
         )
 
@@ -206,6 +217,7 @@ class PGPAttackGUI:
         self._display_summary(summary)
         self._suite_running = False
         self._set_controls_state(True)
+        self.log("[SYSTEM] Suite completed. You can run attack again or switch modes.", "INFO")
 
     def _on_suite_error(self, error_text: str) -> None:
         self.log(f"[ERROR] Suite execution failed: {error_text}", "RED")
@@ -218,7 +230,16 @@ class PGPAttackGUI:
         self.btn_run_attack.config(state=state)
         self.btn_prevention.config(state=state)
         self.btn_graphs.config(state=state)
+        self.btn_switch_md5.config(state=state)
         self.prevention_combo.config(state="readonly" if enabled else "disabled")
+
+    def switch_to_md5_mode(self) -> None:
+        if self._suite_running:
+            self.log("[SYSTEM] Please wait. Current suite is still running...", "HIGHLIGHT")
+            return
+        self.current_mode = "MD5"
+        self.var_mode.set("Current Mode: MD5 (Vulnerable)")
+        self.log("[SYSTEM] Switched back to MD5 mode. You can run attack again.", "HIGHLIGHT")
 
     def _display_summary(self, summary: ExperimentSummary) -> None:
         if summary.results:
@@ -254,7 +275,7 @@ class PGPAttackGUI:
 
         self.log("", "INFO")
         self.log("================ PREVENTION VALIDATION ================", "INFO")
-        self.log(f"[SECURE] Running 25 automated {selected_method} prevention test cases...", "GREEN")
+        self.log(f"[SECURE] Running {self.total_tests} automated {selected_method} prevention test cases...", "GREEN")
 
         self._suite_running = True
         self._set_controls_state(False)
@@ -271,7 +292,7 @@ class PGPAttackGUI:
             self.log("[SYSTEM] No MD5 suite found. Running MD5 suite first...", "INFO")
             self.last_md5_summary = run_forgery_suite(
                 mode="MD5",
-                total_tests=25,
+                total_tests=self.total_tests,
                 case_callback=self._log_case_progress,
             )
             self.log("[SYSTEM] MD5 suite for graph preparation completed.", "INFO")
@@ -279,7 +300,7 @@ class PGPAttackGUI:
             self.log("[SYSTEM] No SHA-256 suite found. Running SHA-256 suite first...", "INFO")
             self.last_sha_summary = run_forgery_suite(
                 mode="SHA-256",
-                total_tests=25,
+                total_tests=self.total_tests,
                 case_callback=self._log_case_progress,
             )
             self.log("[SYSTEM] SHA-256 suite for graph preparation completed.", "INFO")
