@@ -34,7 +34,6 @@ def generate_prime(bits=512):
     """Generates a prime number of the specified bit length."""
     while True:
         p = random.getrandbits(bits)
-        # Ensure it's the correct bit length and odd
         p |= (1 << bits - 1) | 1
         if is_prime(p):
             return p
@@ -63,7 +62,7 @@ def generate_keypair(bits=1024):
     n = p * q
     phi = (p - 1) * (q - 1)
     
-    e = 65537 # Standard secure public exponent
+    e = 65537 
     d = mod_inverse(e, phi)
     
     print("Generated key pair\n")

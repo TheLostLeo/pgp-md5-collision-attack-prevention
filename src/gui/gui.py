@@ -4,7 +4,7 @@ import tkinter as tk
 from tkinter import messagebox, scrolledtext
 import threading
 
-from src.analysis.review1_graphs import plot_all_graphs
+from src.analysis.graphs import plot_all_graphs
 from src.attack.experiment_engine import (
     ExperimentSummary,
     TestCaseResult,
