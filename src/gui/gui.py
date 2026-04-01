@@ -37,9 +37,10 @@ class PGPAttackGUI:
         self.var_mode = tk.StringVar(value="Current Mode: MD5 (Vulnerable)")
         self.var_prevention_method = tk.StringVar(value="SHA-256")
         self._suite_running = False
-        self.graph_window: tk.Toplevel | None = None
         self.graph_view_var = tk.StringVar(value="")
         self.graph_paths: dict[str, str] = {}
+        self.graph_panel_visible = False
+        self._graph_selector: ttk.Combobox | None = None
         self.graph_image_label: tk.Label | None = None
         self.graph_image_ref = None
 
@@ -117,10 +118,18 @@ class PGPAttackGUI:
         )
         self.btn_switch_md5.grid(row=1, column=3, sticky="w", padx=8, pady=(4, 2))
 
-        state = tk.Label(self.root, textvariable=self.var_mode, font=("Arial", 11, "bold"), fg="#2c3e50")
+        main_container = tk.Frame(self.root)
+        main_container.pack(fill=tk.BOTH, expand=True)
+
+        self.left_panel = tk.Frame(main_container)
+        self.left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.graph_panel = tk.LabelFrame(main_container, text=" Graph Viewer ", padx=8, pady=8)
+
+        state = tk.Label(self.left_panel, textvariable=self.var_mode, font=("Arial", 11, "bold"), fg="#2c3e50")
         state.pack(fill=tk.X, padx=10, pady=(8, 0))
 
-        dashboard = tk.LabelFrame(self.root, text=" Cryptographic State Dashboard ", padx=10, pady=10)
+        dashboard = tk.LabelFrame(self.left_panel, text=" Cryptographic State Dashboard ", padx=10, pady=10)
         dashboard.pack(fill=tk.X, padx=10, pady=8)
 
         tk.Label(dashboard, text="Public Key (e, n):", font=("Arial", 10, "bold")).grid(row=0, column=0, sticky="nw", padx=8, pady=5)
@@ -137,7 +146,7 @@ class PGPAttackGUI:
 
         dashboard.columnconfigure(1, weight=1)
 
-        log_frame = tk.LabelFrame(self.root, text=" Execution Log ", padx=6, pady=6)
+        log_frame = tk.LabelFrame(self.left_panel, text=" Execution Log ", padx=6, pady=6)
         log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=8)
 
         self.log_area = scrolledtext.ScrolledText(
@@ -153,6 +162,22 @@ class PGPAttackGUI:
         self.log_area.tag_config("RED", foreground="#ef4444", font=("Consolas", 10, "bold"))
         self.log_area.tag_config("GREEN", foreground="#22c55e", font=("Consolas", 10, "bold"))
         self.log_area.tag_config("HIGHLIGHT", foreground="#f59e0b", font=("Consolas", 10, "bold"))
+
+        graph_control_frame = tk.Frame(self.graph_panel, pady=4)
+        graph_control_frame.pack(fill=tk.X)
+
+        tk.Label(graph_control_frame, text="Select Graph:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=6)
+        self._graph_selector = ttk.Combobox(
+            graph_control_frame,
+            textvariable=self.graph_view_var,
+            state="readonly",
+            width=38,
+        )
+        self._graph_selector.pack(side=tk.LEFT, padx=6)
+        self._graph_selector.bind("<<ComboboxSelected>>", lambda _: self._display_selected_graph())
+
+        self.graph_image_label = tk.Label(self.graph_panel, bg="#111827")
+        self.graph_image_label.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
 
     def log(self, message: str, tag: str = "INFO") -> None:
         self.log_area.insert(tk.END, message + "\n", tag)
@@ -318,32 +343,14 @@ class PGPAttackGUI:
     def _open_graph_viewer(self, generated: dict[str, str]) -> None:
         self.graph_paths = dict(generated)
 
-        if self.graph_window is None or not self.graph_window.winfo_exists():
-            self.graph_window = tk.Toplevel(self.root)
-            self.graph_window.title("Generated Graph Viewer")
-            self.graph_window.geometry("1200x820")
-
-            control_frame = tk.Frame(self.graph_window, pady=8)
-            control_frame.pack(fill=tk.X)
-
-            tk.Label(control_frame, text="Select Graph:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=8)
-            graph_selector = ttk.Combobox(
-                control_frame,
-                textvariable=self.graph_view_var,
-                state="readonly",
-                width=55,
-            )
-            graph_selector.pack(side=tk.LEFT, padx=8)
-            graph_selector.bind("<<ComboboxSelected>>", lambda _: self._display_selected_graph())
-            self._graph_selector = graph_selector
-
-            self.graph_image_label = tk.Label(self.graph_window, bg="#111827")
-            self.graph_image_label.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        else:
-            self.graph_window.deiconify()
-            self.graph_window.lift()
+        if not self.graph_panel_visible:
+            self.graph_panel.pack(side=tk.RIGHT, fill=tk.BOTH, padx=(0, 10), pady=8)
+            self.graph_panel_visible = True
 
         graph_names = list(self.graph_paths.keys())
+        if self._graph_selector is None:
+            return
+
         self._graph_selector["values"] = graph_names
 
         preferred_default = "mandatory_dashboard_4in1"
@@ -365,7 +372,11 @@ class PGPAttackGUI:
 
         try:
             image = Image.open(image_path)
-            image.thumbnail((1150, 760), Image.Resampling.LANCZOS)
+            panel_width = self.graph_panel.winfo_width()
+            panel_height = self.graph_panel.winfo_height()
+            max_width = max(420, panel_width - 20)
+            max_height = max(420, panel_height - 70)
+            image.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
             self.graph_image_ref = ImageTk.PhotoImage(image)
             self.graph_image_label.config(image=self.graph_image_ref)
         except Exception as exc:
